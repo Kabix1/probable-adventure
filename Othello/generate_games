@@ -1,0 +1,99 @@
+#!/usr/bin/env python
+from itertools import product
+import pickle
+import othello
+from sys import argv
+import numpy as np
+import tensorflow as tf
+from input_data import input_data
+import random
+from time import time
+from datetime import datetime
+
+INPUT_FILE = "data/saved_games.dat"
+OUTPUT_FILE = "data/NN_saved_games.dat"
+
+def nn_weights(num_weights):
+    num_squares, num_players = 64, 2
+    train = input_data(INPUT_FILE)
+    x = tf.placeholder(tf.float32, [None, num_squares])
+    W_list = np.array([tf.Variable(tf.zeros([num_squares, num_players])) for _ in range(num_weights)])
+    b_list = [tf.Variable(tf.zeros([num_players])) for _ in range(num_weights)]
+    y_list = []
+    # Define loss and optimizer
+    y_ = tf.placeholder(tf.float32, [None, num_players])
+    for W, b in zip(W_list, b_list):
+        y_list.append(tf.matmul(x, W) + b)
+    init = tf.global_variables_initializer()
+    sess = tf.Session()
+    sess.run(init)
+    for y in y_list:
+        cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(y, y_))
+        train_step = tf.train.GradientDescentOptimizer(0.5).minimize(cross_entropy)
+        for _ in range(500):
+            batch_xs, batch_ys = train.next_batch(100)
+            batch_xs = np.reshape(batch_xs, (-1, num_squares))
+            batch_ys = np.reshape(batch_ys, (-1, num_players))
+            sess.run(train_step, feed_dict={x: batch_xs, y_: batch_ys})
+    print(num_weights, len(W_list))
+    W_values = []
+    for W, b in zip(W_list, b_list):
+        W_values.append(W.eval(sess)[:,1] + b.eval(sess)[1])
+    sess.close()
+    return W_values
+
+
+def random_weighted(num_games, depth=4):
+    data = []
+    start = time()
+    for i in range(num_games):
+        if i % 2 == 0 and i != 0:
+            elapsed = time() - start
+            total = (float(num_games)/i)*elapsed
+            eta = datetime.fromtimestamp(start + total)
+            print("Estimated to finish at {0:%H}:{0:%M}:{0:%S}".format(eta))
+        weighted = othello.random_weighted_score()
+        ab = othello.alphabeta_searcher(depth, weighted)
+        game, winner = othello.play_game(ab, ab)
+        winner = [1, 0] if winner == 1 else [0, 1]
+        for board in game[30:]:
+           np_board = np.array([1.0 if b == "o" else -1.0 if b == "@" else 0 for b in board], np.float32)
+           np_board = np.reshape(np.reshape(np_board, (10, 10))[1:9, 1:9], 64)
+           data.append((np_board, winner))
+    return data
+
+def TF_weighted(num_games, depth=4):
+    data = []
+    weights = nn_weights(int(np.ceil(np.sqrt(num_games))))
+    strategies = []
+    for W in weights:
+        ow = np.zeros((10, 10))
+        ow[1:9,1:9] = np.reshape(W, (8,8))
+        ow = np.reshape(ow, 100)
+        strategies.append(othello.alphabeta_searcher(depth, othello.weighted_score(ow)))
+    matches = list(product(strategies, strategies))
+    start = time()
+    for i in range(len(matches)):
+        if i % 2 == 0 and i != 0:
+            elapsed = time() - start
+            total = (float(num_games)/i)*elapsed
+            eta = datetime.fromtimestamp(start + total)
+            print("Estimated to finish at {0:%H}:{0:%M}:{0:%S}".format(eta))
+        
+        game, winner = othello.play_game(matches[i][0], matches[i][1])
+        winner = [1, 0] if winner == 1 else [0, 1]
+        for board in game:
+           np_board = np.array([1.0 if b == "o" else -1.0 if b == "@" else 0 for b in board], np.float32)
+           np_board = np.reshape(np.reshape(np_board, (10, 10))[1:9, 1:9], 64)
+           data.append((np_board, winner))
+    return data
+
+num_games = int(argv[1])
+if len(argv) > 2:
+    depth = int(argv[2])
+data = TF_weighted(num_games)
+random.shuffle(data)
+f = open(OUTPUT_FILE, 'ab')
+for line in data:
+    pickle.dump(line, f)
+
