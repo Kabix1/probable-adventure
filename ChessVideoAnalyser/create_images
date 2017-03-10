@@ -1,0 +1,4 @@
+#!/usr/bin/env python
+import YouTube as yt
+yt.download()
+yt.create_images()
