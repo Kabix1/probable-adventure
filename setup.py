@@ -20,5 +20,5 @@ setup(
         "Topic :: Utilities",
         "License :: OSI Approved :: BSD License",
     ],
-    install_requires=['tensorflow', 'imageio', 'pafy', 'pylab'],
+    install_requires=['tensorflow', 'imageio', 'pafy'],
 )

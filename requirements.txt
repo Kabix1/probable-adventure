@@ -1,0 +1,5 @@
+# List of requirements, run with pip -r install requirements.txt
+
+tensorflow
+imageio
+pafy
