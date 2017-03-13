@@ -1,5 +1,7 @@
-# List of requirements, run with pip -r install requirements.txt
+# List of requirements, run with pip install -r requirements.txt
 
 tensorflow
 imageio
 pafy
+
+# Also needs opencv, install with conda install opencv
