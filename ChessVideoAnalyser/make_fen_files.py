@@ -5,9 +5,23 @@ from glob import glob
 import os
 
 
+class piece:
+    def __init__(self, name, threshold, FEN, pos, template_path="../data/templates/"):
+        self.name = name
+        self.threshold = threshold
+        self.FEN = FEN
+        self.pos = pos
+        self.template_path = template_path
+        self.update_templates()
+
+    def update_templates(self):
+        self.templates = glob("{}{}*.png".format(self.template_path, self.name))
+
 
 class analyser:
     """Analyses png files and outputs fen files"""
+
+    pieces = []
 
     thresholds = [
         ('white_rook', 0.6), ('white_knight', 0.6), ('white_bishop', 0.85),
@@ -34,23 +48,46 @@ class analyser:
         self.template_path = template_path
         self.FEN_path = FEN_path
 
+        self.pieces.append(piece("white_rook", 0.6, "R", [(0,0), (7,0)]))
+        self.pieces.append(piece("white_knight", 0.6, "N", [(1,0), (6,0)]))
+        self.pieces.append(piece("white_bishop", 0.85, "B", [(2,0), (5,0)]))
+        self.pieces.append(piece("white_king", 0.6, "K", [(4,0)]))
+        self.pieces.append(piece("white_queen", 0.87, "Q", [(3,0)]))
+        self.pieces.append(piece("white_pawn", 0.55, "P", [(0,1), (1,1)]))
+
+        self.pieces.append(piece("black_rook", 0.6, "r", [(0,7), (7,7)]))
+        self.pieces.append(piece("black_knight", 0.8, "n", [(1,7), (6,7)]))
+        self.pieces.append(piece("black_bishop", 0.9, "b", [(2,7), (5,7)]))
+        self.pieces.append(piece("black_king", 0.8, "k", [(4,7)]))
+        self.pieces.append(piece("black_queen", 0.87, "q", [(3,7)]))
+        self.pieces.append(piece("black_pawn", 0.85, "p", [(0,6), (1,6)]))
+
 
     def set_thresholds(self, thresholds):
         """change thresholds for templates [... ('piece', threshold) ...]"""
         self.thresholds = thresholds
 
 
+    def _get_template(self, board, pos):
+        sq = board.shape[0] / 8
+        X = (round(sq * pos[0]), round(sq*(pos[0] + 1)))
+        Y = ((7-pos[1]) * sq, (7-pos[1] + 1)*sq)
+        return board[Y[0]:Y[1], X[0]:X[1], :]
+
     def make_templates(self):
         img = cv2.imread("{}board.png".format(self.template_path))
-        sq = img.shape[0] / 8
-        for i in range(8):
-            X = (int(sq*i), int(sq*(i+1)))
-            Y = (0, int(sq))
-            print(X, Y)
-            template = img[Y[0]:Y[1],X[0]:X[1],:]
-            print(template)
-            cv2.imwrite("template{}.png".format(i), template)
+        for piece in self.pieces:
+            for pos, i in list(zip(piece.pos, range(1, len(piece.pos) + 1))):
+                template = self._get_template(img, pos)
+                cv2.imwrite("{}{}{}.png".format(self.template_path,
+                                                piece.name, i), template)
+            piece.update_templates()
 
+
+    def get_position(self, point, square):
+        x = point[0] + square[0] / 2
+        y = point[1] + square[1] / 2
+        return (int(x / square[0]), int(y / square[1]))
 
     def image_to_FEN(self, img):
         """takes img and returns fen file matching the position"""
@@ -58,16 +95,13 @@ class analyser:
         FEN_ending = " w - - 0 1"
         board = [x[:] for x in [[""] * 8] * 8]
         img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        for piece, threshold in self.thresholds:
-            template = cv2.imread('{}{}.png'.format(self.template_path, piece),0)
-            res = cv2.matchTemplate(img_gray,template,cv2.TM_CCOEFF_NORMED)
-            loc = np.where( res >= threshold)
-            for pt in zip(*loc[::-1]):
-                center = (pt[0] + template.shape[0] / 2, pt[1] + template.shape[1] / 2)
-                square_shape = tuple(map((1/8.0).__mul__, img_gray.shape[::-1]))
-                letter = int(center[0]/square_shape[0])
-                number = int(center[1]/square_shape[0])
-                board[number][letter] = FEN_TABLE[piece]
+        for piece in self.pieces:
+            for template in piece.templates:
+                res = cv2.matchTemplate(img_gray, template, cv2.TM_CCOEFF_NORMED)
+                loc = np.where(res >= piece.threshold)
+                for point in zip(*loc[::-1]):
+                    pos = self.get_position(point, template.shape)
+                    board[pos[1]][pos[0]] = piece.FEN
 
         for number in range(8):
             empty = 0
